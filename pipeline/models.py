@@ -1,22 +1,8 @@
-"""
-Data model for a single output row.
-
-Using a dataclass (rather than passing dicts around) gives us:
-- A single place that defines the CSV schema.
-- Type hints / autocomplete while writing extraction code.
-- A `to_csv_row` method that guarantees consistent column order and
-  consistent handling of missing values (always "" rather than sometimes
-  "" and sometimes "None" or "N/A").
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
 
 
-# The exact column order required by the assignment brief. Defined once
-# here and reused by both the dataclass and the CSV writer, so they can
-# never drift apart.
 CSV_COLUMNS: tuple[str, ...] = (
     "noticeId",
     "lotId",
