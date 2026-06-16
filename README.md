@@ -167,8 +167,6 @@ The solution only extracts information available on tender detail pages and does
 
 ## Time Spent
 
-## Time Spent
-
 Approximately 2.5 hours.
 
 The biggest time investment was understanding PLACSP itself rather than writing code. I spent a good portion of the exercise manually exploring the site, inspecting page structures, and figuring out how search results were generated.
