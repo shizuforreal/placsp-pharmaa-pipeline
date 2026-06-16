@@ -1,0 +1,1 @@
+"""PLACSP pharmaceutical tender pipeline."""

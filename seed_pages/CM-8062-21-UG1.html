@@ -1,0 +1,74 @@
+<!--
+This is an example of a locally saved PLACSP detail page, structured to
+match the real page the take-home author found manually (see Image 2 /
+the pasted page text in the conversation): tender CM/8062/21/UG1,
+"Abiraterone, axitinib, geftinib...", Universidad Jaume I.
+
+To use this workflow with real data:
+  1. Open a tender detail page in your browser (the page you reach via
+     "Detalle de la licitación").
+  2. Save it: File > Save Page As... > "Webpage, HTML Only".
+  3. Put the saved .html file in this `seed_pages/` directory.
+  4. Add a row to seed_html_manifest.csv:
+       url,molecule,html_file
+       <the page's URL>,<MoleculeName>,seed_pages/<your_file>.html
+  5. Run: python -m pipeline.run --seed-html-manifest seed_html_manifest.csv
+-->
+<html>
+<body>
+
+<table>
+<tr><th>File</th><td>CM/8062/21/UG1</td></tr>
+<tr><th>Entidad Adjudicadora</th><td>Rectorado de la Universidad Jaume I</td></tr>
+</table>
+
+<p><b>Objeto del Contrato</b>: Abiraterone, axitinib, geftinib...</p>
+
+<table>
+<tr><th>Tipo de Administración</th><td>Entidad de Derecho Público</td></tr>
+<tr><th>Actividad Principal</th><td>13 - Educación</td></tr>
+<tr><th>Tipo de Entidad Adjudicadora</th><td>Órgano de Contratación</td></tr>
+<tr><th>CIF</th><td>Q6250003H</td></tr>
+</table>
+
+<p>
+<b>Importe</b>
+924,6 EUR.
+<br>
+<b>Importe (sin impuestos)</b>
+764,13 EUR.
+</p>
+
+<p>
+<b>Programas de Financiación</b>
+No hay financiación con fondos de la UE
+</p>
+
+<p>
+<b>Procedimiento</b>
+Contrato Menor
+</p>
+
+<p>Adjudicado</p>
+<p>
+<b>Adjudicatario</b>
+MERCK LIFE SCIENCE S.L.U.
+</p>
+
+<p>
+<b>Importe total ofertado (sin impuestos)</b>
+764,13 EUR.
+</p>
+
+<p>
+<b>Fecha del Acuerdo</b>
+16/12/2021
+</p>
+
+<p>
+<b>Fecha de Publicación</b>
+27/01/2022
+</p>
+
+</body>
+</html>
