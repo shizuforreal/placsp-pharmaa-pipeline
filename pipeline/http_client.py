@@ -1,18 +1,3 @@
-"""
-A thin wrapper around `requests` that adds the "be a good citizen" behaviour
-expected by the assignment brief:
-
-- A meaningful User-Agent identifying this script and a contact method.
-- A minimum delay between requests (rate limiting), so we don't hammer a
-  public government server.
-- Automatic retries with backoff for transient errors (timeouts, 5xx).
-- Centralised logging of every request made.
-
-Everything else in the pipeline should fetch pages through `PoliteSession`
-rather than calling `requests` directly, so this behaviour is applied
-consistently everywhere.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -22,9 +7,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Identify ourselves honestly. PLACSP is a public service; a clear UA lets
-# its admins see who is hitting their server and why, and contact us if
-# something is wrong.
+
 USER_AGENT = (
     "placsp-pharma-tender-pipeline/0.1 "
     "(student take-home assignment; "
