@@ -173,7 +173,7 @@ Approximately 2.5 hours.
 
 The biggest time investment was understanding PLACSP itself rather than writing code. I spent a good portion of the exercise manually exploring the site, inspecting page structures, and figuring out how search results were generated.
 
-After that, with the help of claude I implemented the extraction pipeline, added molecule matching and data normalisation, wrote a small set of tests, and documented the main limitations and assumptions of the approach.
+After that,I implemented the extraction pipeline, added molecule matching and data normalisation, wrote a small set of tests, and documented the main limitations and assumptions of the approach.
 ---
 
 ## Running the Pipeline
