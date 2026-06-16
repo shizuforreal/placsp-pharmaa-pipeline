@@ -126,6 +126,8 @@ These appear to be laboratory reference standards or research reagents rather th
 
 This highlights an important limitation of keyword-based matching: a molecule name may appear in research, laboratory, or testing purchases rather than clinical medicine procurement.
 
+Also, During manual inspection, some target molecules appeared to be referenced in tender attachments or supporting documents rather than the tender summary page itself. Since PDF parsing was explicitly out of scope for this exercise, the pipeline only verifies molecule mentions found in the HTML content of the tender detail page.
+
 ---
 
 ## Engineering Practices
@@ -159,6 +161,7 @@ This is why the output includes the `moleculeDetected` field.
 ### No PDF Processing
 
 The solution only extracts information available on tender detail pages and does not process attached documents or PDFs, which was outside the scope of the assignment.
+
 
 ---
 
