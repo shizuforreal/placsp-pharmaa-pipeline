@@ -1,5 +1,3 @@
-"""Write `TenderRecord`s to a CSV file with the columns required by the brief."""
-
 from __future__ import annotations
 
 import csv
