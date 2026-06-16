@@ -1,26 +1,3 @@
-"""
-Extract structured fields from a PLACSP tender detail page.
-
-The detail page is a label/value layout (see the screenshot and pasted HTML
-in the brief's worked example): each field is rendered as a bold label
-("Importe", "Adjudicatario", "Procedimiento", ...) followed by its value,
-either inline or in the next element. PLACSP's actual markup uses a mix of
-<dt>/<dd>, <th>/<td>, and bold <span>/<div> "label: value" pairs depending
-on the page section, so this module looks for label text first and then
-checks a few likely places for the corresponding value.
-
-This is intentionally a "best effort, label-driven" extractor rather than
-one hard-coded to a specific DOM structure, because:
-- We only had one worked example page to develop against.
-- The brief explicitly says we don't need to handle every page variant --
-  but a label-driven approach is more *robust* to variants than a fixed
-  set of CSS selectors, for roughly the same amount of code.
-
-Every extracted field falls back to "" if not found, so a partially-matching
-page still produces a usable (if incomplete) row rather than crashing the
-pipeline.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -34,10 +11,6 @@ from pipeline.molecules import TARGET_MOLECULES, detect_molecule, variants_for
 
 logger = logging.getLogger(__name__)
 
-
-# Maps the Spanish labels seen on PLACSP detail pages to internal field
-# names. Add more entries here if you encounter pages with different
-# wording for the same concept.
 LABEL_MAP: dict[str, str] = {
     "expediente": "noticeId",
     "objeto del contrato": "title",
@@ -63,11 +36,6 @@ LABEL_MAP: dict[str, str] = {
     "lot number": "lotId",
 }
 
-# Values that are really UI link/button labels rather than real data --
-# PLACSP renders these in place of the actual field value on some pages
-# (e.g. when the award detail lives on a separate sub-page we don't fetch).
-# Any extracted value matching one of these (case-insensitive) is treated
-# as "not found" rather than written to the CSV as-is.
 _PLACEHOLDER_VALUES = {
     "ver detalle de la adjudicación",
     "ver detalle de la adjudicacion",
