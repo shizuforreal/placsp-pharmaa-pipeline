@@ -1,38 +1,3 @@
-"""
-Search PLACSP for a given free-text query and return detail-page URLs.
-
-How PLACSP search actually works
-----------------------------------
-The public search UI at
-    https://contrataciondelestado.es/wps/portal/plataforma/buscador/
-
-is a Liferay/JSF portlet. Every link on the page (including the search
-results) is a "deep link" of the form `.../wps/portal/.../!ut/p/z1/<token>`,
-where `<token>` encodes portlet view-state that is normally only valid
-within the browser session that generated it. A plain `requests.get()` to
-the search URL returns the *empty* search form, not results -- the results
-are produced by a server-side form POST tied to that session's view-state.
-
-What this module does
-----------------------
-1. GETs the search portal page to establish a session (cookies) and to try
-   to locate the hidden JSF view-state field and form action URL.
-2. POSTs the search term as a JSF form submission using that view-state.
-3. Parses the returned HTML for result rows and extracts the detail-page
-   "deeplink" URLs (the same kind of URL you get by clicking "Detalle de la
-   licitación", e.g.
-   .../wps/poc?uri=deeplink:detalle_licitacion&idEvl=...).
-
-Known limitation
-------------------
-JSF view-state tokens can be short-lived, environment-specific, or rejected
-for automated clients regardless of User-Agent. If this module cannot find
-a view-state field, or the POST does not return recognisable result rows, it
-logs a clear warning and returns an empty list rather than failing the whole
-pipeline. See README.md "Limitations" for how the pipeline still produces a
-useful CSV in that case (via the `--seed-urls` fallback).
-"""
-
 from __future__ import annotations
 
 import logging
@@ -48,8 +13,7 @@ SEARCH_PAGE_URL = (
     "https://contrataciondelestado.es/wps/portal/plataforma/buscador/"
 )
 
-# Field name PLACSP uses for the free-text search box, as seen in the
-# screenshot the user supplied ("Texto a buscar:").
+
 SEARCH_TEXT_FIELD_CANDIDATES = (
     "textoBusqueda",
     "texto",
@@ -58,13 +22,7 @@ SEARCH_TEXT_FIELD_CANDIDATES = (
 
 
 def search_tenders(session: PoliteSession, query: str) -> list[str]:
-    """Search PLACSP for `query` and return a list of detail-page URLs.
-
-    Returns an empty list (with a logged warning) if the search form
-    cannot be located or submitted programmatically -- this is treated as
-    a recoverable condition, not a fatal error, since the JSF portal can
-    refuse automated submissions even with correct headers.
-    """
+    
     logger.info("Searching PLACSP for molecule query: %r", query)
 
     try:
