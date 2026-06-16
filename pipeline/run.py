@@ -1,39 +1,3 @@
-"""
-Orchestrates the full pipeline: search -> fetch detail pages -> extract -> CSV.
-
-Usage
------
-    python -m pipeline.run
-    python -m pipeline.run --output output.csv --seed-urls seed_urls.csv
-    python -m pipeline.run --seed-html-manifest seed_html_manifest.csv
-    python -m pipeline.run --log-level DEBUG
-
-Three sources of tender data are combined (and de-duplicated where they
-overlap):
-
-1. Live search (default, always attempted): for each target molecule, query
-   PLACSP's search portal (`pipeline.search.search_tenders`) and collect any
-   detail-page URLs found.
-
-2. Seed URLs (optional, via `--seed-urls`): a CSV file with columns
-   `url,molecule` listing detail-page URLs you've already collected manually
-   (e.g. by browsing PLACSP yourself, as in the worked example). These are
-   fetched live, the same as search results.
-
-3. Seed HTML manifest (optional, via `--seed-html-manifest`): a CSV file
-   with columns `url,molecule,html_file` pointing at locally saved copies of
-   detail pages. These are parsed directly from disk -- no HTTP request at
-   all. This is the fully offline fallback for when PLACSP returns 403s to
-   automated clients on a given network.
-
-See README.md "Limitations" for why all three exist and how to use them.
-
-Every unique detail URL/page is parsed into one row in the output CSV.
-(PLACSP detail pages for "contrato menor" notices, as in our worked example,
-typically describe a single lot, so one row per page is reasonable; see
-README.md for how multi-lot pages would be handled.)
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -51,11 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_seed_urls(path: Path) -> list[tuple[str, str]]:
-    """Load (url, molecule) pairs from a seed CSV file.
-
-    Expected columns: `url`, `molecule` (molecule = canonical name, e.g.
-    "Abiraterone", matching `pipeline.molecules.TARGET_MOLECULES`).
-    """
+    
     pairs: list[tuple[str, str]] = []
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -71,17 +31,7 @@ def load_seed_urls(path: Path) -> list[tuple[str, str]]:
 
 
 def load_seed_html_manifest(manifest_path: Path) -> list[tuple[str, str, Path]]:
-    """Load (url, molecule, html_file_path) triples from a manifest CSV.
-
-    Expected columns: `url`, `molecule`, `html_file`. `html_file` is a path
-    (relative to the manifest's directory, or absolute) to a saved copy of
-    that tender's detail-page HTML.
-
-    This lets the pipeline run fully offline against pages you've already
-    saved (e.g. via "Save Page As... > Webpage, HTML Only" in your
-    browser) -- useful when PLACSP blocks automated requests from a given
-    network (see README.md "Limitations").
-    """
+    
     triples: list[tuple[str, str, Path]] = []
     with manifest_path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
