@@ -180,8 +180,9 @@ CM/8062/21/UG1,"Abiraterone, axitinib, geftinib...",Abiraterone,TRUE,764.13
 ## Future Improvements
 
 Potential enhancements include:
-Full support for JSF-based pagination
-Processing attached procurement documents and PDFs
-More advanced molecule matching using fuzzy matching or NLP techniques
-Additional automated validation of extracted procurement records
-Parallelisation for larger-scale searches while respecting rate limits
+
+* Implement full support for JSF-based pagination to capture results across all PLACSP search result pages.
+* Process attached procurement documents and PDFs to identify molecule mentions that do not appear in the tender summary page.
+* Enhance molecule matching with fuzzy matching and NLP-based techniques to improve detection accuracy.
+* Add automated validation and quality checks for extracted procurement records.
+* Improve performance through controlled parallelisation while continuing to respect portal rate limits and responsible scraping practices.
