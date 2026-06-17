@@ -92,24 +92,15 @@ The CSV contains:
 
 ## Output Notes
 
-One thing I noticed while testing is that many tenders returned by PLACSP search do **not** explicitly mention the target molecule in the title or detail page content.
-
-As a result, many rows have:
-
-```text
+During testing, I noticed that PLACSP search results do not always correspond directly to molecule mentions visible on the tender detail page.
+For this reason, many rows contain:
 moleculeDetected = FALSE
-```
-
-This is intentional.
-
-PLACSP search appears to match against information broader than the fields captured by this pipeline (for example, indexed procurement documents or metadata that are not visible in the tender summary page).
-
-The `moleculeDetected` flag allows the output to distinguish between:
-
-* search results returned by PLACSP
-* tenders where the molecule was actually confirmed in the extracted content
-
-This makes it easy to filter for verified matches.
+This does not necessarily mean the search result is incorrect.
+Instead, it means the molecule could not be confirmed within the HTML content extracted by the pipeline.
+The moleculeDetected flag allows consumers of the dataset to distinguish between:
+tenders returned by PLACSP search
+tenders where the molecule was explicitly confirmed in extracted content
+This provides transparency and makes downstream filtering straightforward.
 
 ---
 
@@ -148,20 +139,20 @@ If a page cannot be fetched or parsed, the pipeline logs the issue and continues
 
 ## Limitations
 
-### PLACSP Search Behaviour
+PLACSP Uses Stateful Search Forms
 
-PLACSP uses a stateful portal architecture and search requests depend on session-specific form data. Because of this, automated searching is less predictable than scraping a typical website.
+PLACSP relies on a JSF (JavaServer Faces) architecture that uses hidden fields such as javax.faces.ViewState to manage search state and navigation.
 
-### Search Results Are Not Always Confirmed Matches
+As a result, automated searching is more complex than scraping a conventional website with predictable URLs.
+Pagination Is Not Fully Implemented
 
-Many search results returned by PLACSP do not contain an explicit mention of the target molecule in the extracted page content.
+During manual validation, I discovered that some valid molecule occurrences appear on later pages of PLACSP search results.
+For example, multiple occurrences of Axitinib were visible when manually navigating through additional search result pages, while only a subset were captured by the current pipeline.
 
-This is why the output includes the `moleculeDetected` field.
+The current implementation extracts results returned from the initial search response but does not yet navigate all JSF-driven paginated result pages.
 
-### No PDF Processing
-
-The solution only extracts information available on tender detail pages and does not process attached documents or PDFs, which was outside the scope of the assignment.
-
+Consequently, the output may under-report valid matches that exist elsewhere in the PLACSP result set.
+This was identified during validation and represents the primary area for future improvement.
 
 ---
 
@@ -186,3 +177,11 @@ Example output:
 noticeId,title,productMolecule,moleculeDetected,awardValue
 CM/8062/21/UG1,"Abiraterone, axitinib, geftinib...",Abiraterone,TRUE,764.13
 ```
+## Future Improvements
+
+Potential enhancements include:
+Full support for JSF-based pagination
+Processing attached procurement documents and PDFs
+More advanced molecule matching using fuzzy matching or NLP techniques
+Additional automated validation of extracted procurement records
+Parallelisation for larger-scale searches while respecting rate limits
