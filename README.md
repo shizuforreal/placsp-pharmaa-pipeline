@@ -96,7 +96,7 @@ During testing, I noticed that PLACSP search results do not always correspond di
 For this reason, many rows contain:
 moleculeDetected = FALSE
 This does not necessarily mean the search result is incorrect.
-Instead, it means the molecule could not be confirmed within the HTML content extracted by the pipeline.
+Instead, it means the molecule could not be confirmed within the HTML content extracted by the pipeline on the initial page as it is only evaluating the initial page.
 The moleculeDetected flag allows consumers of the dataset to distinguish between:
 tenders returned by PLACSP search
 tenders where the molecule was explicitly confirmed in extracted content
