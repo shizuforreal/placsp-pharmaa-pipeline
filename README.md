@@ -4,23 +4,21 @@
 
 This project is a small Python pipeline that searches the Spanish public procurement portal (PLACSP) for tenders related to five target molecules:
 
-* Axitinib
-* Abiraterone
-* Fingolimod
-* Tamsulosin
-* Glatiramer Acetate
+- Axitinib
+- Abiraterone
+- Fingolimod
+- Tamsulosin
+- Glatiramer Acetate
 
 The pipeline extracts tender information from PLACSP tender pages and outputs a single CSV containing the fields requested in the assignment, including buyer, title, award value, supplier, publication date, and molecule matching information.
 
-The goal was to build a clean, maintainable pipeline that can reliably collect and structure relevant procurement data.
-
----
+The goal was to build a clean, maintainable pipeline that can reliably collect and structure relevant procurement data, and to be upfront about what it can and can't confirm.
 
 ## Setup
 
 Create and activate a virtual environment:
 
-```bash
+```
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -28,161 +26,113 @@ pip install -r requirements.txt
 
 Run the pipeline:
 
-```bash
+```
 python -m pipeline.run
 ```
 
-The output will be written to:
-
-```text
-output.csv
-```
+The output will be written to: `output.csv`
 
 Run tests:
 
-```bash
+```
 python -m pytest -v
 ```
 
----
-
 ## Approach
 
-I started by exploring PLACSP manually to understand how tender pages are structured and what information is consistently available.
-
-One of the first challenges was that PLACSP is not a simple website where search results can be retrieved with a standard URL. Search requests depend on hidden form fields and session state, so I spent some time understanding how the portal behaves before automating the search process.
+I started by exploring PLACSP manually to understand how tender pages are structured and what information is consistently available. One of the first challenges was that PLACSP isn't a simple website where search results can be retrieved with a standard URL. Search requests depend on hidden form fields and session state (it's built on JSF/PrimeFaces, so pagination is a server-side postback rather than a `?page=N` link), so I spent real time understanding how the portal behaves before automating the search process.
 
 After understanding the site structure, I split the solution into small modules with a single responsibility:
 
-| Module          | Responsibility                          |
-| --------------- | --------------------------------------- |
-| `search.py`     | Search PLACSP and collect tender URLs   |
-| `extract.py`    | Extract fields from tender detail pages |
-| `molecules.py`  | Molecule matching and variant handling  |
-| `models.py`     | Defines the CSV schema                  |
-| `csv_writer.py` | Writes results to CSV                   |
-| `run.py`        | Pipeline orchestration                  |
+| Module | Responsibility |
+|---|---|
+| `search.py` | Search PLACSP and collect tender URLs |
+| `extract.py` | Extract fields from tender detail pages |
+| `molecules.py` | Molecule matching and variant handling |
+| `models.py` | Defines the CSV schema |
+| `csv_writer.py` | Writes results to CSV |
+| `run.py` | Pipeline orchestration |
 
-This structure keeps the code easier to maintain and allows extraction logic to evolve independently from the rest of the pipeline.
+This structure keeps the code easier to maintain and lets the extraction logic evolve independently from the rest of the pipeline.
 
----
+## Making Sure Pagination Actually Covers the Results
+
+This is worth its own section, since it shaped a lot of how the search step ended up working.
+
+PLACSP's results list isn't simple to page through. The "Next" button isn't a link, it's an `<input type="image">` tied to the form's `javax.faces.ViewState`, so moving to the next page means re-POSTing the entire form (including a fresh ViewState each time) with the Next button's name included, as if it had actually been clicked. Once that part was working, a molecule with hundreds of results meant following that postback across as many pages as it took, rather than stopping after the first batch of 25.
+
+While testing that against real data, I noticed something more interesting: PLACSP's results view is tied to the session itself, not just to the form's ViewState token. Running all five molecules' searches through one shared session meant that after one molecule had paginated deep into its results, the next molecule's search would sometimes pick up mid-range instead of starting cleanly at result 1 — and a couple of queries later, the results table could disappear from the page entirely. I caught this by watching the per-page result-count logs at `--log-level DEBUG`: a query reporting "results 276–292" right out of the gate, instead of "1–25", was the tell that the server still thought I was mid-pagination on a previous search.
+
+The fix was to give each individual search term its own fresh session and cookie jar, so PLACSP has no way to carry state from one molecule's search into the next. Each search now starts clean and pages forward using PLACSP's own "X – Y de Z Resultados" count to know when it's genuinely done — so a molecule with a lot of results gets fully paginated, and one with fewer just stops naturally, without a shared fixed cap getting in the way either direction.
+
+I also widened the link-detection logic in `search.py` once I noticed PLACSP renders some result rows as a `deeplink:detalle_licitacion` query-string URL and others as a WebSphere-Portal-style `!ut/p/z1/...` path-encoded URL — visually identical on the results page, but only one of those formats was being picked up. Both share the substring `detalle`, so matching is now scoped to that instead of one specific URL shape.
 
 ## Molecule Matching
 
-The assignment required matching both English and Spanish molecule names.
+The assignment required matching both English and Spanish molecule names. Each target molecule has a list of common variants, e.g.:
 
-Each target molecule therefore has a list of common variants.
-
-Examples:
-
-| Molecule           | Variants                                   |
-| ------------------ | ------------------------------------------ |
-| Abiraterone        | abiraterone, abiraterona                   |
+| Molecule | Variants |
+|---|---|
+| Abiraterone | abiraterone, abiraterona |
 | Glatiramer Acetate | glatiramer acetate, acetato de glatirámero |
 
-Matching is implemented using simple case-insensitive text searches, which is sufficient for the scope of this exercise.
+Matching is implemented using simple case-insensitive text search, which is sufficient for the scope of this exercise.
+
+One thing I added once pagination was actually working: a single tender page can legitimately mention more than one target molecule (a framework agreement covering several drugs at once is a normal pattern on PLACSP). The extraction step now checks each parsed page against every target molecule, not just the one whose search term happened to find it, and emits one output row per molecule it confirms — so a tender mentioning both Axitinib and Abiraterone shows up correctly under both, regardless of which molecule's search surfaced the URL first.
 
 The CSV contains:
 
-* `productMolecule` – target molecule being searched
-* `moleculeDetected` – whether the molecule was actually found in the page content
-* `moleculeVariant` – exact matched term
-
----
+- `productMolecule` — target molecule for this row
+- `moleculeDetected` — whether the molecule was actually confirmed on the page
+- `moleculeVariant` — the exact matched term
 
 ## Output Notes
 
-During testing, I noticed that PLACSP search results do not always correspond directly to molecule mentions visible on the tender detail page.
-For this reason, many rows contain:
-moleculeDetected = FALSE
-This does not necessarily mean the search result is incorrect.
-Instead, it means the molecule could not be confirmed within the HTML content extracted by the pipeline on the initial page as it is only evaluating the initial page.
-The moleculeDetected flag allows consumers of the dataset to distinguish between:
-tenders returned by PLACSP search
-tenders where the molecule was explicitly confirmed in extracted content
-This provides transparency and makes downstream filtering straightforward.
+With pagination covering the full result set, the search now sees hundreds of results per molecule instead of just the first page, and most of those still won't show a confirmed molecule mention on the tender detail page itself. That's expected: PLACSP's text search is intentionally broad, and a fair share of genuine matches only appear inside an attached PDF (pliego, anexo, etc.), which is out of scope for this exercise. The pipeline keeps this transparent rather than guessing — by default it only writes rows where `moleculeDetected = TRUE`, and `--include-unconfirmed` is there if you want to see everything PLACSP's search surfaced, unfiltered.
 
----
+Two of the five target molecules — Tamsulosin and Glatiramer Acetate — currently come back with zero confirmed rows. I checked this directly against PLACSP's own search before trusting the output: searching those terms on the site itself turns up very little right now that's both live and phrased in a way the page text exposes, rather than buried in an attachment. I'm treating this as an accurate reflection of what's currently on PLACSP for those two molecules, and calling it out explicitly here so it reads as a finding rather than a silent gap.
 
 ## What I Learned During Extraction
 
-The only confirmed matches I found for both **Abiraterone** and **Axitinib** were small purchases made by **Universidad Jaume I**.
+The clearest confirmed matches I found for both Abiraterone and Axitinib were small purchases made by Universidad Jaume I, e.g. "Abiraterone, axitinib, geftinib..." and "Abiraterone, axitinib, gefitinib CRS...". These read as laboratory reference standards or research reagents rather than hospital pharmaceutical procurement contracts — a good reminder that keyword matching on a molecule name doesn't tell you anything about *why* that name appears. A reagent catalogue and a hospital supply contract can use identical wording.
 
-Examples:
-
-* "Abiraterone, axitinib, geftinib..."
-* "Abiraterone, axitinib, gefitinib CRS..."
-
-These appear to be laboratory reference standards or research reagents rather than hospital pharmaceutical procurement contracts.
-
-This highlights an important limitation of keyword-based matching: a molecule name may appear in research, laboratory, or testing purchases rather than clinical medicine procurement.
-
-Also, During manual inspection, some target molecules appeared to be referenced in tender attachments or supporting documents rather than the tender summary page itself. Since PDF parsing was explicitly out of scope for this exercise, the pipeline only verifies molecule mentions found in the HTML content of the tender detail page.
-
----
+I also noticed, just from manually reading detail pages, that some target-molecule mentions live in tender attachments rather than the summary page itself. Since PDF parsing was explicitly out of scope for this exercise, the pipeline only ever confirms matches found in the HTML of the tender detail page, and is upfront about that boundary via the `moleculeDetected` flag rather than guessing.
 
 ## Engineering Practices
 
 To keep the pipeline reliable and maintainable, I included:
 
-* Type hints throughout the codebase
-* Logging with configurable log levels
-* HTTP retries with backoff
-* Request rate limiting
-* A custom User-Agent
-* Unit tests for molecule matching and field extraction
-* Graceful handling of failed requests and parsing errors
+- Type hints throughout the codebase
+- Logging with configurable log levels
+- HTTP retries with backoff
+- Request rate limiting
+- A custom, honest User-Agent identifying the script
+- Unit tests for molecule matching and field extraction
+- Graceful handling of failed requests and parsing errors — if a page can't be fetched or parsed, the pipeline logs it and keeps going
 
-If a page cannot be fetched or parsed, the pipeline logs the issue and continues processing the remaining records.
+## Known Limitations
 
----
+**PLACSP uses stateful search forms.** It relies on a JSF architecture with hidden fields like `javax.faces.ViewState` to manage search state and navigation, so automated searching is more involved than scraping a site with predictable URLs. Pagination now works correctly per the fix described above, but the underlying site behavior is still worth flagging for anyone picking this up later.
 
-## Limitations
+**PDF/attachment content isn't parsed.** As noted above, some molecule mentions only exist inside attached documents. This is out of scope for this exercise but would be the natural next step for more complete coverage.
 
-PLACSP Uses Stateful Search Forms
-
-PLACSP relies on a JSF (JavaServer Faces) architecture that uses hidden fields such as javax.faces.ViewState to manage search state and navigation.
-
-As a result, automated searching is more complex than scraping a conventional website with predictable URLs.
-Pagination Is Not Fully Implemented
-
-During manual validation, I discovered that some valid molecule occurrences appear on later pages of PLACSP search results.
-For example, multiple occurrences of Axitinib were visible when manually navigating through additional search result pages, while only a subset were captured by the current pipeline.
-
-The current implementation extracts results returned from the initial search response but does not yet navigate all JSF-driven paginated result pages.
-
-Consequently, the output may under-report valid matches that exist elsewhere in the PLACSP result set.
-This was identified during validation and represents the primary area for future improvement.
-
----
+**Result-page markup can vary.** PLACSP's results table id, label wording, and URL format aren't perfectly consistent across pages — I handle the variations I've actually encountered (see `LABEL_MAP` in `extract.py` and the dual URL-format handling in `search.py`), but a structural change on PLACSP's end could still surface a new pattern that needs adding.
 
 ## Time Spent
 
-Approximately 2.5 hours.
+Roughly 4 hours across two sessions. The first pass (~2.5 hours) went mostly into understanding PLACSP itself — exploring the site, inspecting page structures, and figuring out how search results were generated — followed by the initial extraction pipeline, molecule matching, normalization, and a first set of tests. The second pass (~1.5 hours) went into hardening the search step against PLACSP's full result set — covering all pages per molecule, sessions, and both detail-link formats — plus adding the multi-molecule fan-out, once manual checks against the live site showed there was more to cover.
 
-The biggest time investment was understanding PLACSP itself rather than writing code. I spent a good portion of the exercise manually exploring the site, inspecting page structures, and figuring out how search results were generated.
-
-After that,I implemented the extraction pipeline, added molecule matching and data normalisation, wrote a small set of tests, and documented the main limitations and assumptions of the approach.
----
-
-## Running the Pipeline
-
-```bash
-python -m pipeline.run
-```
-
-Example output:
-
-```text
-noticeId,title,productMolecule,moleculeDetected,awardValue
-CM/8062/21/UG1,"Abiraterone, axitinib, geftinib...",Abiraterone,TRUE,764.13
-```
 ## Future Improvements
 
-Potential enhancements include:
+- Process attached procurement documents and PDFs to identify molecule mentions that don't appear in the tender summary page.
+- Enhance molecule matching with fuzzy matching and NLP-based techniques to improve detection accuracy.
+- Add automated validation and quality checks for extracted procurement records.
+- Improve performance through controlled parallelisation while continuing to respect portal rate limits and responsible scraping practices.
 
-* Implement full support for JSF-based pagination to capture results across all PLACSP search result pages.
-* Process attached procurement documents and PDFs to identify molecule mentions that do not appear in the tender summary page.
-* Enhance molecule matching with fuzzy matching and NLP-based techniques to improve detection accuracy.
-* Add automated validation and quality checks for extracted procurement records.
-* Improve performance through controlled parallelisation while continuing to respect portal rate limits and responsible scraping practices.
+## Example Output
+
+```
+noticeId,lotId,title,productMolecule,moleculeDetected,awardValue
+CM/8062/21/UG1,,"Abiraterone, axitinib, geftinib...",Abiraterone,TRUE,764.13
+CM/8062/21/UG1,,"Abiraterone, axitinib, geftinib...",Axitinib,TRUE,764.13
+```
