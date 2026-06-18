@@ -59,13 +59,13 @@ This structure keeps the code easier to maintain and lets the extraction logic e
 
 This is worth its own section, since it shaped a lot of how the search step ended up working.
 
-PLACSP's results list isn't simple to page through. The "Next" button isn't a link, it's an `<input type="image">` tied to the form's `javax.faces.ViewState`, so moving to the next page means re-POSTing the entire form (including a fresh ViewState each time) with the Next button's name included, as if it had actually been clicked. Once that part was working, a molecule with hundreds of results meant following that postback across as many pages as it took, rather than stopping after the first batch of 25.
+PLACSP's results list isn't simple to page through. The "Next" button isn't a link, it's an `<input type="image">` tied to the form's `javax.faces.ViewState`, so moving to the next page means rePOSTing the entire form (including a fresh ViewState each time) with the Next button's name included, as if it had actually been clicked. Once that part was working, a molecule with hundreds of results meant following that postback across as many pages as it took, rather than stopping after the first batch of 25.
 
 While testing that against real data, I noticed something more interesting: PLACSP's results view is tied to the session itself, not just to the form's ViewState token. Running all five molecules' searches through one shared session meant that after one molecule had paginated deep into its results, the next molecule's search would sometimes pick up mid-range instead of starting cleanly at result 1 — and a couple of queries later, the results table could disappear from the page entirely. I caught this by watching the per-page result-count logs at `--log-level DEBUG`: a query reporting "results 276–292" right out of the gate, instead of "1–25", was the tell that the server still thought I was mid-pagination on a previous search.
 
 The fix was to give each individual search term its own fresh session and cookie jar, so PLACSP has no way to carry state from one molecule's search into the next. Each search now starts clean and pages forward using PLACSP's own "X – Y de Z Resultados" count to know when it's genuinely done — so a molecule with a lot of results gets fully paginated, and one with fewer just stops naturally, without a shared fixed cap getting in the way either direction.
 
-I also widened the link-detection logic in `search.py` once I noticed PLACSP renders some result rows as a `deeplink:detalle_licitacion` query-string URL and others as a WebSphere-Portal-style `!ut/p/z1/...` path-encoded URL — visually identical on the results page, but only one of those formats was being picked up. Both share the substring `detalle`, so matching is now scoped to that instead of one specific URL shape.
+I also widened the link-detection logic in `search.py` once I noticed PLACSP renders some result rows as a `deeplink:detalle_licitacion` query-string URL and others as a WebSpherePortal-style `!ut/p/z1/...` path-encoded URL — visually identical on the results page, but only one of those formats was being picked up. Both share the substring `detalle`, so matching is now scoped to that instead of one specific URL shape.
 
 ## Molecule Matching
 
@@ -94,7 +94,7 @@ Two of the five target molecules — Tamsulosin and Glatiramer Acetate — curre
 
 ## What I Learned During Extraction
 
-The clearest confirmed matches I found for both Abiraterone and Axitinib were small purchases made by Universidad Jaume I, e.g. "Abiraterone, axitinib, geftinib..." and "Abiraterone, axitinib, gefitinib CRS...". These read as laboratory reference standards or research reagents rather than hospital pharmaceutical procurement contracts — a good reminder that keyword matching on a molecule name doesn't tell you anything about *why* that name appears. A reagent catalogue and a hospital supply contract can use identical wording.
+The clearest confirmed matches I found for both Abiraterone and Axitinib were small purchases made by Universidad Jaume I, e.g. "Abiraterone, axitinib, geftinib..." and "Abiraterone, axitinib, gefitinib CRS...". These read as laboratory reference standards or research reagents rather than hospital pharmaceutical procurement contracts, a good reminder that keyword matching on a molecule name doesn't tell you anything about *why* that name appears. A reagent catalogue and a hospital supply contract can use identical wording.
 
 I also noticed, just from manually reading detail pages, that some target-molecule mentions live in tender attachments rather than the summary page itself. Since PDF parsing was explicitly out of scope for this exercise, the pipeline only ever confirms matches found in the HTML of the tender detail page, and is upfront about that boundary via the `moleculeDetected` flag rather than guessing.
 
@@ -120,7 +120,7 @@ To keep the pipeline reliable and maintainable, I included:
 
 ## Time Spent
 
-Roughly 3.5 hours across two sessions. The first pass (~2.5 hours) covered understanding PLACSP itself — exploring the site, inspecting page structures, and figuring out how search results were generated — followed by the initial extraction pipeline, molecule matching, normalization, and a first set of tests. The second pass (~1 hour) went into hardening the search step against PLACSP's full result set, once manual checks against the live site showed there was more to cover: fixing the pagination POST so every result page per molecule actually gets visited, giving each molecule's search its own session so PLACSP doesn't carry pagination state from one query into the next, and widening link detection to catch both detail-page URL formats. The multimolecule fanout was added in this same pass.
+Roughly 3.5 hours across two sessions. The first pass (~2.5 hours) covered understanding PLACSP itself, exploring the site, inspecting page structures, and figuring out how search results were generated — followed by the initial extraction pipeline, molecule matching, normalization, and a first set of tests. The second pass (~1 hour) went into hardening the search step against PLACSP's full result set, once manual checks against the live site showed there was more to cover: fixing the pagination POST so every result page per molecule actually gets visited, giving each molecule's search its own session so PLACSP doesn't carry pagination state from one query into the next, and widening link detection to catch both detail-page URL formats. The multimolecule fanout was added in this same pass.
 
 ## Future Improvements
 
