@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
 from pipeline.models import TenderRecord
-from pipeline.molecules import TARGET_MOLECULES, detect_molecule, variants_for
+from pipeline.molecules import (
+    TARGET_MOLECULES,
+    detect_all_molecules,
+    detect_molecule,
+    variants_for,
+)
 
 logger = logging.getLogger(__name__)
+
 
 LABEL_MAP: dict[str, str] = {
     "expediente": "noticeId",
@@ -36,6 +43,11 @@ LABEL_MAP: dict[str, str] = {
     "lot number": "lotId",
 }
 
+# Values that are really UI link/button labels rather than real data --
+# PLACSP renders these in place of the actual field value on some pages
+# (e.g. when the award detail lives on a separate sub-page we don't fetch).
+# Any extracted value matching one of these (case-insensitive) is treated
+# as "not found" rather than written to the CSV as-is.
 _PLACEHOLDER_VALUES = {
     "ver detalle de la adjudicación",
     "ver detalle de la adjudicacion",
@@ -46,22 +58,25 @@ _PLACEHOLDER_VALUES = {
 _LOTE_IN_ID_RE = re.compile(r"LOTE[_\s]?(\d+)", re.IGNORECASE)
 
 
-def parse_detail_page(html: str, source_url: str, target_molecule: str) -> TenderRecord:
-    """Parse a single PLACSP tender detail page into a `TenderRecord`.
+def parse_detail_page(
+    html: str, source_url: str, target_molecule: str
+) -> list[TenderRecord]:
+    """Parse a PLACSP tender detail page into one or more `TenderRecord`s.
 
-    Parameters
-    ----------
-    html:
-        Raw HTML of the detail page.
-    source_url:
-        The URL the page was fetched from (stored as `sourceUrl`, and used
-        to derive `noticeId` if not found elsewhere in the page).
-    target_molecule:
-        The canonical molecule name (e.g. "Abiraterone") we were searching
-        for when this page was found. Used to set `productMolecule` and to
-        check `moleculeDetected` / `moleculeVariant` against this
-        molecule's variants specifically (a page may mention several drugs;
-        we report whether *this* target molecule appears).
+    All the non-molecule fields (title, buyer, dates, award value, etc.)
+    are extracted once from the page. The page text is then checked
+    against *every* molecule in `TARGET_MOLECULES` -- not just
+    `target_molecule` -- because a single tender often covers several
+    drugs (e.g. a framework agreement listing both "Axitinib" and
+    "Abiraterone" as separate lots/lines). Each molecule that's actually
+    mentioned on the page gets its own output row, so the tender shows up
+    correctly under every molecule's search results, regardless of which
+    search term happened to surface this URL.
+
+    If no target molecule is found on the page at all, a single
+    unconfirmed row is returned for `target_molecule` (moleculeDetected=
+    False), preserving the previous behavior so `--include-unconfirmed`
+    still works and nothing is silently dropped.
     """
     soup = BeautifulSoup(html, "html.parser")
     record = TenderRecord(country="ES", currency="EUR", sourceUrl=source_url)
@@ -78,25 +93,17 @@ def parse_detail_page(html: str, source_url: str, target_molecule: str) -> Tende
         if not current:
             setattr(record, field_name, value)
         elif field_name == "publicationDate" and label == "fecha de publicación":
-            # "Fecha de Publicación" is more accurate for this field than
-            # "Fecha del Acuerdo" (date of contract award), which may have
-            # been picked up first depending on page layout. Prefer it.
+            
             setattr(record, field_name, value)
 
-    # Title fallback: PLACSP often shows the subject as
-    # "Objeto del Contrato: <text>" inline rather than as a clean
-    # label/value pair, so also try a regex over the full page text.
+
     if not record.title:
         record.title = _extract_title_fallback(soup)
 
-    # noticeId fallback: derive from the `idEvl=` query parameter in the
-    # source URL, which is PLACSP's internal tender identifier (matches the
-    # worked example: idEvl=pDbMY4x34FwSugstABGr5A%3D%3D).
+
     if not record.noticeId:
         record.noticeId = _extract_id_from_url(source_url)
 
-    # Award value: strip "EUR.", thousands separators, and normalise the
-    # decimal comma to a dot, e.g. "764,13 EUR." -> "764.13".
     if record.awardValue:
         record.awardValue = _normalise_amount(record.awardValue)
 
@@ -127,21 +134,57 @@ def parse_detail_page(html: str, source_url: str, target_molecule: str) -> Tende
         record.publicationDate = _normalise_date(record.publicationDate)
 
     # Molecule matching: check the title (and full page text as a fallback)
-    # against this target molecule's known variants.
-    record.productMolecule = target_molecule
+    # against ALL target molecules' known variants, not just
+    # `target_molecule`. A tender can legitimately cover several drugs
+    # (e.g. separate lots for Axitinib and Abiraterone within the same
+    # framework agreement), and we want a confirmed row for each one that
+    # actually appears on the page -- regardless of which molecule's
+    # search term originally found this URL.
     haystack = record.title or soup.get_text(" ", strip=True)
-    matched_name, detected, variant = _detect_for_molecule(haystack, target_molecule)
-    record.moleculeDetected = detected
-    record.moleculeVariant = variant or ""
-    if not detected:
-        # Fall back to generic detection so we at least report *something*
-        # was matched, even if it wasn't this exact target molecule's
-        # canonical spelling (e.g. page only contains a typo'd variant).
-        _, generic_detected, generic_variant = detect_molecule(haystack)
-        record.moleculeDetected = generic_detected
-        record.moleculeVariant = generic_variant or ""
+    all_matches = detect_all_molecules(haystack)
 
-    return record
+    if all_matches:
+        records = [
+            replace(
+                record,
+                productMolecule=canonical_name,
+                moleculeDetected=True,
+                moleculeVariant=variant,
+            )
+            for canonical_name, variant in all_matches
+        ]
+        # Make sure the molecule we were specifically asked to search for
+        # is represented even if, oddly, it wasn't picked up by
+        # `detect_all_molecules` for some reason (defensive; shouldn't
+        # normally trigger since `target_molecule`'s variants are a
+        # subset of what `detect_all_molecules` checks).
+        if target_molecule and not any(
+            r.productMolecule == target_molecule for r in records
+        ):
+            _, generic_detected, generic_variant = _detect_for_molecule(
+                haystack, target_molecule
+            )
+            records.append(
+                replace(
+                    record,
+                    productMolecule=target_molecule,
+                    moleculeDetected=generic_detected,
+                    moleculeVariant=generic_variant or "",
+                )
+            )
+        return records
+
+    # Nothing matched at all: fall back to generic detection so we at
+    # least report *something* was matched, even if it wasn't this exact
+    # target molecule's canonical spelling (e.g. page only contains a
+    # typo'd variant). Returns a single unconfirmed row for
+    # `target_molecule` if even that fails, so callers using
+    # --include-unconfirmed still see the row.
+    _, generic_detected, generic_variant = detect_molecule(haystack)
+    record.productMolecule = target_molecule
+    record.moleculeDetected = generic_detected
+    record.moleculeVariant = generic_variant or ""
+    return [record]
 
 
 def _collect_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
@@ -215,14 +258,7 @@ def _collect_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
 
 
 def _find_next_value(label_element) -> str:
-    """Given an element identified as a label, find the value near it.
-
-    Tries, in order:
-      1. The next sibling element's text.
-      2. The parent's next sibling element's text (common when label and
-         value are each wrapped in their own row/column elements).
-      3. Trailing text within the same parent, after the label.
-    """
+    
     # 1. Next sibling element.
     for sibling in label_element.next_siblings:
         if getattr(sibling, "name", None) is not None:
@@ -247,7 +283,7 @@ def _find_next_value(label_element) -> str:
 
 
 def _text_after(tag) -> str:
-    """Return text immediately following `tag`, up to the next bold tag."""
+    
     parts: list[str] = []
     for sibling in tag.next_siblings:
         name = getattr(sibling, "name", None)
@@ -265,7 +301,7 @@ def _text_after(tag) -> str:
 
 
 def _extract_title_fallback(soup: BeautifulSoup) -> str:
-    """Find a title from a free-text "Objeto del Contrato: ..." pattern."""
+    
     full_text = soup.get_text("\n", strip=True)
     match = re.search(
         r"Objeto del Contrato\s*:?\s*\n?(.+)", full_text, re.IGNORECASE
@@ -279,12 +315,7 @@ _TIMESTAMP_RE = re.compile(r"\b(\d{2}/\d{2}/\d{4})\s+\d{2}:\d{2}:\d{2}\b")
 
 
 def _extract_first_timestamp(soup: BeautifulSoup) -> str:
-    """Find the first bare 'DD/MM/YYYY HH:MM:SS' style timestamp on the page.
-
-    Used as a fallback for `publicationDate` when no labeled field is
-    present -- see the "Advertisements and documents" section in
-    `parse_detail_page` for why this is needed.
-    """
+    
     full_text = soup.get_text(" ", strip=True)
     match = _TIMESTAMP_RE.search(full_text)
     return match.group(1) if match else ""
