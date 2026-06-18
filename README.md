@@ -120,7 +120,7 @@ To keep the pipeline reliable and maintainable, I included:
 
 ## Time Spent
 
-Roughly 4 hours across two sessions. The first pass (~2.5 hours) went mostly into understanding PLACSP itself — exploring the site, inspecting page structures, and figuring out how search results were generated — followed by the initial extraction pipeline, molecule matching, normalization, and a first set of tests. The second pass (~1.5 hours) went into hardening the search step against PLACSP's full result set — covering all pages per molecule, sessions, and both detail-link formats — plus adding the multi-molecule fan-out, once manual checks against the live site showed there was more to cover.
+Roughly 3.5 hours across two sessions. The first pass (~2.5 hours) covered understanding PLACSP itself — exploring the site, inspecting page structures, and figuring out how search results were generated — followed by the initial extraction pipeline, molecule matching, normalization, and a first set of tests. The second pass (~1 hour) went into hardening the search step against PLACSP's full result set, once manual checks against the live site showed there was more to cover: fixing the pagination POST so every result page per molecule actually gets visited, giving each molecule's search its own session so PLACSP doesn't carry pagination state from one query into the next, and widening link detection to catch both detail-page URL formats. The multimolecule fanout was added in this same pass.
 
 ## Future Improvements
 
